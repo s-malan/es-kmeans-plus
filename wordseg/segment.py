@@ -1,5 +1,5 @@
 """
-Evaluation of word segmentation.
+Main functions and class for eskmeans segmentation.
 
 Author: Simon Malan
 Contact: 24227013@sun.ac.za
