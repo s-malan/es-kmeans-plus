@@ -47,8 +47,9 @@ if write a paper look at the history of es-kmeans (goes back to 2009 or somethin
 - wordseg
   - landmark_seg.py : functions to get the landmark segments for an utterance using sylseg (later use another wordseg with high recall)
   - embedding.py : functions to extract downsampled acoustic word embeddings for a segment
-  - eskmeans.py : main functions and classes for eskmeans segmentation and clustering (maybe split into two scipts for the two main tasks)
+  - segment.py : main functions and classes for eskmeans segmentation
+  - cluster.py : main functions and classes for eskmeans clustering
   - evaluate.py : main functions for evaluation of the segmentation
 - utils
-  - encode.py : functions to encode and save audio using MFCCs (later HuBERT)
+  - eskmeans.py : functions to encode and save audio using MFCCs (later HuBERT)
   - data_process.py : functions to sample audio and get corresponding aligments
