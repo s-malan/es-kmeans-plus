@@ -17,6 +17,9 @@ A: other input features instead of MFCCs, use better k-means algo, make more eff
 
 get code from:
 - Herman repo
+  - [Main](https://github.com/kamperh/eskmeans/tree/master)
+  - [Feature_Extraction](https://github.com/kamperh/globalphone_awe/blob/master/features/features.py)
+  - [Downsample](https://github.com/kamperh/bucktsong_eskmeans/blob/master/downsample/downsample_dense.py)
 - Benji DP code
 - Hao DP code
 
