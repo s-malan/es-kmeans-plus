@@ -81,8 +81,6 @@ def peakdet(v, delta, x = None):
 
     return np.array(maxtab), np.array(mintab)
 
-
-
 def theta_oscillator(ENVELOPE, f=5, Q=0.5, thr=0.025, verbose=False):
     """Based on https://github.com/orasanen/thetaOscillator."""
     
@@ -246,3 +244,16 @@ def get_boundaries(wav_fn, return_outh=False, fs=None):
         return valley_indices/1000.0, outh
     else:
         return valley_indices/1000.0
+    
+def get_segments(landmarks, max_span=3): # TODO max_span (n_landmarks_max) is over how many landmarks a segment can span
+    """
+    Return the segments given the landmarks.
+    """
+
+    seglist = []
+    prev_landmark = 0
+    for i in range(1, len(landmarks)): # skip the first landmark at 0.0
+        for j in landmarks[i:i + max_span]:
+            seglist.append((int(np.ceil(prev_landmark*100)), int(np.ceil(j*100))))
+        prev_landmark = landmarks[i]
+    return seglist

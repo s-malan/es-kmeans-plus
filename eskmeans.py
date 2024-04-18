@@ -7,7 +7,7 @@ Date: April 2024
 """
 
 from utils import data_process
-from wordseg import landmark_seg
+from wordseg import landmark_seg, downsample
 
 # ~~~~~~~~~~ Sample a audio file and its alignments ~~~~~~~~~~
 
@@ -44,6 +44,29 @@ print('\n')
 # ~~~~~~~~~~ Get the landmarks for the sampled audio file ~~~~~~~~~~
 
 print('2. Landmarks')
-for wav in wavs:
-    boudaries = landmark_seg.get_boundaries(wav, fs=16000)
-    print(boudaries)
+boundaries = []
+segments = []
+for wav in wavs: # for each utterance TODO do everything here (per utterance), landmark, downsample, segment
+    boundaries.append(landmark_seg.get_boundaries(wav, fs=16000)) # get the boundaries
+    print(boundaries[-1])
+    segments.append(landmark_seg.get_segments(boundaries[-1], max_span = 3)) # max_span = n_landmarks_max (= 6 in notebook)
+    print(segments[-1], len(segments[-1]))
+print('\n')
+
+# ~~~~~~~~~~ Test downsampling each segment of each utterance ~~~~~~~~~~
+
+print('3. Downsampling ex. (do one-for-one later)')
+downsampled_utterances = downsample.downsample(embeddings, segments, n=10) # TODO maybe do on fly in ES-KMeans to not save all embeddings for each utterance and its segments
+print(downsampled_utterances[-1].shape)
+
+# ~~~~~~~~~~ ES-KMeans segmentation ~~~~~~~~~~
+
+print('4. ES-KMeans')
+print('Herman\'s code')
+
+
+
+# k_max = 5
+# n_iterations = 5
+# segmentations = segment.segment(downsampled_utterances, segments, k_max, n_iterations)
+# print(segmentations[-1])
