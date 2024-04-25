@@ -129,9 +129,9 @@ def theta_oscillator(ENVELOPE, f=5, Q=0.5, thr=0.025, verbose=False):
 
     # Do zero padding
     e = np.transpose(ENVELOPE)
-    print(e.shape)
+    # print(e.shape)
     e = np.vstack((ENVELOPE.T, np.zeros((500, e.shape[1]))))
-    print(e.shape)
+    # print(e.shape)
     F = e.shape[1]  # Number of frequency channels
     
     # Get oscillator amplitudes as a function of time
@@ -206,7 +206,7 @@ def get_boundaries(wav_fn, return_outh=False, fs=None):
     
     resampler = T.Resample(orig_freq=fs, new_freq=16000) # TODO not needed if load in at 16000Hz
     wav_data = resampler(wav_data)
-    print(wav_data.squeeze().shape)
+    # print(wav_data.squeeze().shape)
 
     # Compute gammatone envelopes and downsample to 1000 Hz
     coefs = gammatone.filters.make_erb_filters(fs, cfs, width=1.0)
@@ -215,7 +215,7 @@ def get_boundaries(wav_fn, return_outh=False, fs=None):
 
     resampler = T.Resample(orig_freq=fs, new_freq=1000, dtype=torch.float64)
     env = resampler(torch.from_numpy(hilbert_envelope))
-    print('resampled size:', env.shape)
+    # print('resampled size:', env.shape)
 
     # Run oscillator-based segmentation
     Q_value = 0.5         # Q-value of the oscillator,
@@ -245,15 +245,15 @@ def get_boundaries(wav_fn, return_outh=False, fs=None):
     else:
         return valley_indices/1000.0
     
-def get_segments(landmarks, max_span=3): # TODO max_span (n_landmarks_max) is over how many landmarks a segment can span
+def get_segments(landmarks, max_span=6): # max_span (n_landmarks_max) is over how many landmarks a segment can span
     """
     Return the segments given the landmarks.
     """
 
     seglist = []
     prev_landmark = 0
-    for i in range(1, len(landmarks)): # skip the first landmark at 0.0
+    for i in range(len(landmarks)):
         for j in landmarks[i:i + max_span]:
-            seglist.append((int(np.ceil(prev_landmark*100)), int(np.ceil(j*100))))
+            seglist.append((prev_landmark, j))
         prev_landmark = landmarks[i]
     return seglist

@@ -52,7 +52,7 @@ class KMeans_Herman():
         self.X = X
         self.N, self.D = X.shape
         self.K_max = k_max
-        self.K = 0 # ??? actual number of components (increases as more is found)
+        self.K = 0
 
         # Attributes
         self.mean_numerators = np.zeros((self.K_max, self.D), np.float64)
@@ -63,7 +63,13 @@ class KMeans_Herman():
 
         # Assignments
         if isinstance(assignments, str) and assignments == "rand":
-            assignments = np.random.randint(0, self.K_max, self.N) # for assignments = "rand" # TODO changed to below
+            assignments = np.random.randint(0, self.K_max, self.N)
+        elif isinstance(assignments, str) and assignments == "spread":
+            assignment_list = (
+                list(range(self.K_max))*int(np.ceil(float(self.N)/self.K_max))
+                )[:self.N]
+            random.shuffle(assignment_list)
+            assignments = np.array(assignment_list)
         else:
             assignments = np.asarray(assignments, np.int32)
         print('assignments random:', assignments, assignments.shape)
@@ -166,7 +172,9 @@ class KMeans_Herman():
             self.mean_numerators[k, :] -= self.X[i]
             if self.counts[k] != 0:
                 self.means[k, :] = self.mean_numerators[k, :] / self.counts[k]
-            
+            else:
+                self.del_component(k)
+
     def del_component(self, k):
         """Remove component `k`."""
 

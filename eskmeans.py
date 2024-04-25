@@ -11,7 +11,7 @@ from wordseg import landmark_seg, downsample
 
 # ~~~~~~~~~~ Sample a audio file and its alignments ~~~~~~~~~~
 
-data = data_process.Features(wav_dir='/media/hdd/data/librispeech/dev-clean', root_dir='/media/hdd/embeddings/librispeech/', model_name='mfcc', layer=-1, data_dir='/media/hdd/data/librispeech_alignments/', alignment_format='.TextGrid', num_files=1)
+data = data_process.Features(wav_dir='/media/hdd/data/luna', root_dir='/media/hdd/embeddings/luna', model_name='mfcc', layer=-1, data_dir='/media/hdd/data/librispeech_alignments/', alignment_format='.TextGrid', num_files=-1)
 
 sample, wavs = data.sample_embeddings() # sample from the feature embeddings
 embeddings = data.load_embeddings(sample) # load the sampled embeddings
@@ -36,9 +36,9 @@ print(embeddings[0].shape)
 print(norm_embeddings[0].shape)
 
 # Get alignements
-alignments = data.get_alignment_paths(files=sample) # get the paths to the alignments corresponding to the sampled embeddings
-data.set_alignments(files=alignments) # set the text, start and end attributes of the alignment files
-print(data.alignment_data[0].text, data.alignment_data[0].end)
+# alignments = data.get_alignment_paths(files=sample) # get the paths to the alignments corresponding to the sampled embeddings
+# data.set_alignments(files=alignments) # set the text, start and end attributes of the alignment files
+# print(data.alignment_data[0].text, data.alignment_data[0].end)
 print('\n')
 
 # ~~~~~~~~~~ Get the landmarks for the sampled audio file ~~~~~~~~~~
@@ -63,8 +63,6 @@ print(downsampled_utterances[-1].shape)
 
 print('4. ES-KMeans')
 print('Herman\'s code')
-
-
 
 # k_max = 5
 # n_iterations = 5
