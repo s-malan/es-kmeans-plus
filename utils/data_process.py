@@ -109,7 +109,7 @@ class Features:
         self.frames_per_ms = frames_per_ms
         self.alignment_data = []
 
-    def sample_embeddings(self): # Works
+    def sample_embeddings(self, speaker=None): # Works
         """
         Randomly samples embeddings (and their waveforms) from the specified model and returns the file paths as a list.
 
@@ -117,6 +117,8 @@ class Features:
         ----------
         self : Class
             The object containing all information to find alignments for the selected embeddings
+        speaker : String
+            The code of the speaker to sample embeddings from (used for mostly for the Buckeye corpus)
 
         Return
         ------
@@ -126,11 +128,20 @@ class Features:
 
         if self.layer != -1:
             layer = 'layer_' + str(self.layer)
-            all_embeddings = sorted(glob(os.path.join(self.root_dir, self.model_name, layer, "**/*.npy"), recursive=True))
+            if speaker is not None:
+                all_embeddings = sorted(glob(os.path.join(self.root_dir, self.model_name, layer, f'**/{speaker}*.npy'), recursive=True))
+            else:
+                all_embeddings = sorted(glob(os.path.join(self.root_dir, self.model_name, layer, "**/*.npy"), recursive=True))
         else:
-            all_embeddings = sorted(glob(os.path.join(self.root_dir, self.model_name, "**/*.npy"), recursive=True))
+            if speaker is not None:
+                all_embeddings = sorted(glob(os.path.join(self.root_dir, self.model_name, f'**/{speaker}*.npy'), recursive=True))
+            else:
+                all_embeddings = sorted(glob(os.path.join(self.root_dir, self.model_name, "**/*.npy"), recursive=True))
 
-        all_wavs = sorted(glob(os.path.join(self.wav_dir, "**/*" + self.wav_format), recursive=True))
+        if speaker is not None:
+            all_wavs = sorted(glob(os.path.join(self.wav_dir, f'**/{speaker}*' + self.wav_format), recursive=True))
+        else:
+            all_wavs = sorted(glob(os.path.join(self.wav_dir, "**/*" + self.wav_format), recursive=True))
 
         if self.num_files == -1: # sample all the data
             return all_embeddings, all_wavs
@@ -241,6 +252,31 @@ class Features:
             alignment = Alignment_Data(file, self.alignment_format, type='words')
             alignment.set_attributes()
             self.alignment_data.append(alignment)
+
+    def get_speakers(self): # Works
+        """
+        Get a list of speakers based on the dataset split.
+
+        Parameters
+        ----------
+        self : Class
+            The object containing all information to find alignments for the selected embeddings
+
+        Return
+        ------
+        speaker_list : list (String)
+            A list of speakers in the dataset
+        """
+
+        sub_dir = os.path.split(self.wav_dir)
+        speaker_dir = os.path.join(sub_dir[0], f'buckeye_{sub_dir[1]}_speakers.list')
+
+        speakers = []
+        with open(speaker_dir) as f:
+            for line in f:
+                speakers.append(line.strip())
+        
+        return sorted(speakers)
 
     def get_frame_num(self, seconds): # Works
         """

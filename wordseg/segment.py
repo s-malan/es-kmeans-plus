@@ -8,12 +8,13 @@ Date: April 2024
 
 import numpy as np
 import random
-from cluster import KMeans_Herman
 import timeit
 
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parents[1]))
+sys.path.append(str(Path(__file__).resolve().parents[0]))
+from cluster import KMeans_Herman
 from utils import data_process
 import landmark_seg, downsample
 
@@ -221,6 +222,7 @@ class ESKmeans_Herman():
 
         old_embeds = self.get_segmented_embeds_i(i)
         print('old', old_embeds, old_k, self.boundaries[i])
+        print(self.acoustic_model.assignments)
 
         N = self.lengths[i]
         vec_embed_neg_len_sqrd_norms = self.get_vec_embed_neg_len_sqrd_norms( # get the score of each segment of the utterance
@@ -239,41 +241,40 @@ class ESKmeans_Herman():
         new_k = self.get_max_unsup_transcript_i(i)
         print('new', new_embeds, new_k)
 
-        for i_embed in old_embeds:
-            if i_embed == -1:
-                continue  # don't remove a non-embedding (would accidently remove the last embedding)
-            self.acoustic_model.del_item(i_embed) # TODO below comments only delete if not in new_embeds
-            print('del', i_embed)
-        for i_embed, k in zip(new_embeds, new_k):
-            print('new assigment', i_embed, k)
-            self.acoustic_model.add_item(i_embed, k)
-        self.acoustic_model.clean_components()
-
-        # # only update if changes were made
-        # del_embeds = []
-        # add_embeds = []
-        # add_k = []
-        # for embed, k in zip(old_embeds, old_k):
-        #     if not (embed in new_embeds and k == new_k[new_embeds.index(embed)]):
-        #         del_embeds.append(embed)
-        
-        # if len(del_embeds) > 0:
-        #     for embed, k in zip(new_embeds, new_k):
-        #         if not (embed in old_embeds and k == old_k[old_embeds.index(embed)]):
-        #             add_embeds.append(embed)
-        #             add_k.append(k)
-        
-        # for i_embed in del_embeds:
+        # for i_embed in old_embeds:
         #     if i_embed == -1:
         #         continue  # don't remove a non-embedding (would accidently remove the last embedding)
-        #     self.acoustic_model.del_item(i_embed) # TODO only delete if not in new_embeds
-        #     print('del', i_embed)
-        # for i_embed, k in zip(add_embeds, add_k):
+        #     print('del', i_embed, self.acoustic_model.assignments[i_embed])
+        #     self.acoustic_model.del_item(i_embed) # TODO below comments only delete if not in new_embeds
+        # for i_embed, k in zip(new_embeds, new_k):
         #     print('new assigment', i_embed, k)
         #     self.acoustic_model.add_item(i_embed, k)
         # self.acoustic_model.clean_components()
 
-        # print(self.acoustic_model.assignments)
+        # only update if changes were made
+        del_embeds = []
+        add_embeds = []
+        add_k = []
+        for embed, k in zip(old_embeds, old_k):
+            if not (embed in new_embeds and k == new_k[new_embeds.index(embed)]):
+                del_embeds.append(embed)
+        
+        if len(del_embeds) > 0:
+            for embed, k in zip(new_embeds, new_k):
+                if not (embed in old_embeds and k == old_k[old_embeds.index(embed)]):
+                    add_embeds.append(embed)
+                    add_k.append(k)
+        
+        for i_embed in del_embeds:
+            if i_embed == -1:
+                continue  # don't remove a non-embedding (would accidently remove the last embedding)
+            self.acoustic_model.del_item(i_embed)
+            print('del', i_embed)
+        for i_embed, k in zip(add_embeds, add_k):
+            print('new assigment', i_embed, k)
+            self.acoustic_model.add_item(i_embed, k)
+        self.acoustic_model.clean_components()
+
         return sum_neg_len_sqrd_norm, new_k
 
     def segment(self, n_iterations):
@@ -306,7 +307,7 @@ class ESKmeans_Herman():
             utt_order = list(range(self.D))
             for i_utt in utt_order:
                 if old_k[i_utt] is None:
-                    old_k[i_utt] = self.get_max_unsup_transcript_i(i_utt)
+                    old_k[i_utt] = list(self.acoustic_model.assignments[self.get_segmented_embeds_i(i_utt)])
                     print('old_k', old_k[i_utt])
 
                 print(f'----- Utterance {i_utt+1} -----')

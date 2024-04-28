@@ -168,6 +168,7 @@ class KMeans_Herman():
         # Only do something if the data vector has been assigned
         if k != -1:
             self.counts[k] -= 1
+            print('check', self.assignments[i])
             self.assignments[i] = -1
             self.mean_numerators[k, :] -= self.X[i]
             if self.counts[k] != 0:
