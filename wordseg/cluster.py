@@ -72,25 +72,25 @@ class KMeans_Herman():
             assignments = np.array(assignment_list)
         else:
             assignments = np.asarray(assignments, np.int32)
-        print('assignments random:', assignments, assignments.shape)
+        # print('assignments random:', assignments, assignments.shape)
 
         # Make sure we have consequetive values ??? make sure we have some segments assigned to each component
         for k in range(assignments.max()): # [0, max)
-            print('k:', k, np.nonzero(assignments == k)[0])
+            # print('k:', k, np.nonzero(assignments == k)[0])
             while len(np.nonzero(assignments == k)[0]) == 0:
                 assignments[np.where(assignments > k)] -= 1
-                print('new assignments:', assignments, assignments.shape)
+                # print('new assignments:', assignments, assignments.shape)
             if assignments.max() == k:
-                print('max has been reached k =', k)
+                # print('max has been reached k =', k)
                 break
 
-        print('\n')
+        # print('\n')
         # Add the data vectors (!! only has an impact if the values were not consequetive as above)
         for k in range(assignments.max() + 1): # [0, max]
-            print('k:', k, np.where(assignments == k)[0])
+            # print('k:', k, np.where(assignments == k)[0])
             for i in np.where(assignments == k)[0]: # !! i is the segment that belongs to component k
                 self.add_item(i, k) # !! Add data vector `X[i]` (segment i) to component `k`
-        print('assignments:', self.assignments, self.assignments.shape)
+        # print('assignments:', self.assignments, self.assignments.shape)
     
     def setup_random_means(self):
         self.random_means = self.X[np.random.choice(range(self.N), self.K_max, replace=True), :]
@@ -156,7 +156,7 @@ class KMeans_Herman():
         self.mean_numerators[k, :] += self.X[i]
         self.counts[k] += 1
         self.means[k, :] = self.mean_numerators[k, :] / self.counts[k]
-        print('++ Adding segment', i, 'to component', k, 'with K =', self.K)
+        # print('++ Adding segment', i, 'to component', k, 'with K =', self.K)
         self.assignments[i] = k
     
     def del_item(self, i):
@@ -168,7 +168,7 @@ class KMeans_Herman():
         # Only do something if the data vector has been assigned
         if k != -1:
             self.counts[k] -= 1
-            print('check', self.assignments[i])
+            # print('check', self.assignments[i])
             self.assignments[i] = -1
             self.mean_numerators[k, :] -= self.X[i]
             if self.counts[k] != 0:
@@ -183,7 +183,7 @@ class KMeans_Herman():
 
         self.K -= 1
         if k != self.K:
-            print('Move component', self.K, 'to', k)
+            # print('Move component', self.K, 'to', k)
             # Put stats from last component into place of the one being removed
             self.mean_numerators[k] = self.mean_numerators[self.K]
             self.counts[k] = self.counts[self.K]
@@ -199,7 +199,7 @@ class KMeans_Herman():
         """Remove all empty components."""
         for k in np.where(self.counts[:self.K] == 0)[0][::-1]:
             self.del_component(k)
-            print('!! Deleting component', k, 'new K =', self.K)
+            # print('!! Deleting component', k, 'new K =', self.K)
 
     def fit(self, n_iterations, unasigned=False):
         """
@@ -214,12 +214,12 @@ class KMeans_Herman():
             # component to which it should be assigned
             mean_numerator_updates = [] # !! keeps track of the new assignments to delete old and add new
 
-            print(f'\n\t\t~~~~~ Iteration {i_iteration} ~~~~~')
-            print(f'\tAssignments: {self.assignments}, K = {self.K}\n')
+            # print(f'\n\t\t~~~~~ Iteration {i_iteration} ~~~~~')
+            # print(f'\tAssignments: {self.assignments}, K = {self.K}\n')
 
             for i in range(self.N): # !! i is the segment
 
-                print(f'--- Segment {i}, current component {self.assignments[i]} ---')
+                # print(f'--- Segment {i}, current component {self.assignments[i]} ---')
 
                 # Keep track of old value in case we do not have to update
                 k_old = self.assignments[i] # !! k_old is the component to which the segment currently belongs
@@ -230,16 +230,16 @@ class KMeans_Herman():
                 scores = self.neg_sqrd_norm(i) # !! negative squared distances of `X[i]` (segment) to the mean of each of the components
                 k = np.argmax(scores) # !! new closest component for segment i
                 if k != k_old: # !! a new assignment for segment i
-                    print(f'New component {k} for segment {i}')
+                    # print(f'New component {k} for segment {i}')
                     mean_numerator_updates.append((i, k))
                 
             # Update means
-            print('Updates:', mean_numerator_updates, 'but K =', self.K)
+            # print('Updates:', mean_numerator_updates, 'but K =', self.K)
             for i, k in mean_numerator_updates:
                 self.del_item(i) # !! delete old history of segment i's component
                 self.add_item(i, k) # !! add segment i to new component k
 
-            print(f'\n\tAssignments: {self.assignments}, new K = {self.K}\n')
+            # print(f'\n\tAssignments: {self.assignments}, new K = {self.K}\n')
             
             # Remove empty components
             self.clean_components()

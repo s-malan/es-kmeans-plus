@@ -247,7 +247,8 @@ class Features:
         files : list (Path)
             A list of file paths to the alignment files corresponding to the sampled embeddings
         """
-            
+        
+        self.alignment_data = []
         for file in files:
             alignment = Alignment_Data(file, self.alignment_format, type='words')
             alignment.set_attributes()

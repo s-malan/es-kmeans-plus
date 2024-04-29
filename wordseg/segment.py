@@ -9,9 +9,10 @@ Date: April 2024
 import numpy as np
 import random
 import timeit
-
 import sys
 from pathlib import Path
+from tqdm import tqdm
+
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 sys.path.append(str(Path(__file__).resolve().parents[0]))
 from cluster import KMeans_Herman
@@ -148,7 +149,7 @@ class ESKmeans_Herman():
         assignments[init_embeds] = np.array(assignment_list)
 
         self.acoustic_model = KMeans_Herman(self.embeddings, K_max, assignments) # TODO make sure embeddings are in correct format (N utterance segments, D features after downsampled)
-        print('ESKMEANS initial assignments:', self.acoustic_model.assignments, self.boundaries)
+        # print('ESKMEANS initial assignments:', self.acoustic_model.assignments, self.boundaries)
     
     def get_segmented_embeds_i(self, i):
         """
@@ -221,8 +222,8 @@ class ESKmeans_Herman():
         """
 
         old_embeds = self.get_segmented_embeds_i(i)
-        print('old', old_embeds, old_k, self.boundaries[i])
-        print(self.acoustic_model.assignments)
+        # print('old', old_embeds, old_k, self.boundaries[i])
+        # print(self.acoustic_model.assignments)
 
         N = self.lengths[i]
         vec_embed_neg_len_sqrd_norms = self.get_vec_embed_neg_len_sqrd_norms( # get the score of each segment of the utterance
@@ -233,13 +234,13 @@ class ESKmeans_Herman():
         # Get new boundaries
         sum_neg_len_sqrd_norm, self.boundaries[i, :N] = forward_backward_kmeans_viterbi(
         vec_embed_neg_len_sqrd_norms, N, self.n_slices_min, self.n_slices_max)
-        print('new boundaries after viterbi', self.boundaries[i])
+        # print('new boundaries after viterbi', self.boundaries[i])
 
         # Remove old embeddings and add new ones; this is equivalent to
         # assigning the new embeddings and updating the means.
         new_embeds = self.get_segmented_embeds_i(i)
         new_k = self.get_max_unsup_transcript_i(i)
-        print('new', new_embeds, new_k)
+        # print('new', new_embeds, new_k)
 
         # for i_embed in old_embeds:
         #     if i_embed == -1:
@@ -269,9 +270,9 @@ class ESKmeans_Herman():
             if i_embed == -1:
                 continue  # don't remove a non-embedding (would accidently remove the last embedding)
             self.acoustic_model.del_item(i_embed)
-            print('del', i_embed)
+            # print('del', i_embed)
         for i_embed, k in zip(add_embeds, add_k):
-            print('new assigment', i_embed, k)
+            # print('new assigment', i_embed, k)
             self.acoustic_model.add_item(i_embed, k)
         self.acoustic_model.clean_components()
 
@@ -299,22 +300,22 @@ class ESKmeans_Herman():
         """
 
         old_k = [None]*self.D
-        print(old_k)
-        for iteration in range(n_iterations):
-            print(f'\t~~~~~~~~~~~~~~~ Iteration {iteration+1} ~~~~~~~~~~~~~~~')
+        # print(old_k)
+        for iteration in tqdm(range(n_iterations), desc="Iteration"):
+            # print(f'\t~~~~~~~~~~~~~~~ Iteration {iteration+1} ~~~~~~~~~~~~~~~')
 
             sum_neg_len_sqrd_norm = 0
             utt_order = list(range(self.D))
             for i_utt in utt_order:
                 if old_k[i_utt] is None:
                     old_k[i_utt] = list(self.acoustic_model.assignments[self.get_segmented_embeds_i(i_utt)])
-                    print('old_k', old_k[i_utt])
+                    # print('old_k', old_k[i_utt])
 
-                print(f'----- Utterance {i_utt+1} -----')
+                # print(f'----- Utterance {i_utt+1} -----')
                 sum_neg_len_sqrd_norm_utt, old_k[i_utt] = self.segment_utt_i(i_utt, old_k[i_utt])
                 sum_neg_len_sqrd_norm += sum_neg_len_sqrd_norm_utt
 
-            print('Sum of negative squared norm:', sum_neg_len_sqrd_norm)
+            # print('Sum of negative squared norm:', sum_neg_len_sqrd_norm)
 
         return sum_neg_len_sqrd_norm
 
