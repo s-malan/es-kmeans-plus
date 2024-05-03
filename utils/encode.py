@@ -17,7 +17,6 @@ import torchaudio
 import torch.nn.functional as F
 import torchaudio.transforms as T
 
-
 class EncodeAudio:
     def __init__(
         self, model_name, data_dir, save_dir, extension
@@ -76,7 +75,7 @@ class EncodeAudio:
         output : N/A
         """
 
-        wav = F.pad(wav, ((400 - 320) // 2, (400 - 320) // 2))
+        # wav = F.pad(wav, ((400 - 320) // 2, (400 - 320) // 2))
         wav = self.preemphasis(wav, coeff=0.97)
 
         f_s = 16000

@@ -245,10 +245,10 @@ class ESKmeans_Herman():
         # for i_embed in old_embeds:
         #     if i_embed == -1:
         #         continue  # don't remove a non-embedding (would accidently remove the last embedding)
-        #     print('del', i_embed, self.acoustic_model.assignments[i_embed])
+        #     # print('del', i_embed, self.acoustic_model.assignments[i_embed])
         #     self.acoustic_model.del_item(i_embed) # TODO below comments only delete if not in new_embeds
         # for i_embed, k in zip(new_embeds, new_k):
-        #     print('new assigment', i_embed, k)
+        #     # print('new assigment', i_embed, k)
         #     self.acoustic_model.add_item(i_embed, k)
         # self.acoustic_model.clean_components()
 
