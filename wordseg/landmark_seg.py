@@ -240,6 +240,9 @@ def get_boundaries(wav_fn, return_outh=False, fs=None):
     else:
         valley_indices = np.array([0, env.shape[1]])
 
+    if valley_indices[0] != 0.0: # add onset if not detected (since it gets deleted later)
+        valley_indices = np.insert(valley_indices, 0, 0.0)
+
     if return_outh:
         return valley_indices/1000.0, outh
     else:

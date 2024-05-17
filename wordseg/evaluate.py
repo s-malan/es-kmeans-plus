@@ -8,7 +8,7 @@ Date: March 2024
 
 import numpy as np
 
-def eval_segmentation(seg, ref, strict=True, tolerance=1, continuous=False, num_seg=None, num_ref=None, num_hit=None):
+def eval_segmentation(seg, ref, strict=True, tolerance=2, continuous=False, num_seg=None, num_ref=None, num_hit=None):
     """
     Calculate number of hits of the segmentation boundaries with the ground truth boundaries.
 
@@ -54,25 +54,29 @@ def eval_segmentation(seg, ref, strict=True, tolerance=1, continuous=False, num_
         prediction = seg[i_utterance]
         ground_truth = ref[i_utterance]
 
-        if len(prediction) > 0 and abs(prediction[-1] - ground_truth[-1]) <= tolerance: # if the last boundary is within the tolerance, delete it since it would have hit
+        if len(prediction) > 0 and len(ground_truth) > 0 and abs(prediction[-1] - ground_truth[-1]) <= tolerance: # if the last boundary is within the tolerance, delete it since it would have hit
             prediction = prediction[:-1]
-
-        ground_truth = ground_truth[:-1] # Remove the last boundary of the reference if there is more than one boundary
+            if len(ground_truth) > 0: # Remove the last boundary of the reference if there is more than one boundary
+                ground_truth = ground_truth[:-1] 
+        # this works when the segmentation algo does not automatically predict a boundary at the end of the utterance
 
         num_seg += len(prediction)
         num_ref += len(ground_truth)
 
+        if len(prediction) == 0 or len(ground_truth) == 0: # no hits possible
+            continue
+
         # count the number of hits
-        for i_ref in ground_truth: # multiple ref can still hit on a single seg
-            for i_seg in prediction:
+        for i_ref in ground_truth:
+            for i, i_seg in enumerate(prediction):
                 if abs(i_ref - i_seg) <= tolerance:
                     num_hit += 1
+                    prediction.pop(i) # remove the segmentation boundary that was hit
                     if strict: break # makes the evaluation strict, so that a reference boundary can only be hit once
 
     # Return the current counts
     return num_seg, num_ref, num_hit
     
-
 def get_p_r_f1(num_seg, num_ref, num_hit):
     """
     Calculate precision, recall, F-score for the segmentation boundaries.

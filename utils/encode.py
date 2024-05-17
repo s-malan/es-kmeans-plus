@@ -75,12 +75,14 @@ class EncodeAudio:
         output : N/A
         """
 
-        # wav = F.pad(wav, ((400 - 320) // 2, (400 - 320) // 2))
+        if wav.shape[-1] < 200:
+            wav = F.pad(wav, (200 - wav.shape[-1], 200 - wav.shape[-1]))
+
         wav = self.preemphasis(wav, coeff=0.97)
 
         f_s = 16000
-        n_fft = int(np.floor(0.025*f_s)) #25ms window length TODO make 20ms for speech models
-        stride = int(np.floor(0.01*f_s)) #10ms TODO make 20.1ms for same number of frames as the speech models
+        n_fft = int(np.floor(0.025*f_s)) #25ms window length (make 20ms for speech models)
+        stride = int(np.floor(0.01*f_s)) #10ms (make 20.1ms for same number of frames as the speech models)
         transform = T.MFCC(sample_rate=f_s, n_mfcc=13, melkwargs={
         "n_fft": n_fft,
         "n_mels": 24,
@@ -126,7 +128,6 @@ class EncodeAudio:
                     assert sr == 16000
                     
                     self.save_embedding(wav, Path(file_path))
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Encode an audio dataset.")

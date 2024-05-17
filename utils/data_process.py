@@ -11,6 +11,7 @@ import random
 import torch
 from glob import glob
 import os
+import json
 from pathlib import Path
 import textgrids # https://pypi.org/project/praat-textgrids/
 from sklearn.preprocessing import StandardScaler # https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.StandardScaler.html
@@ -28,6 +29,15 @@ class Alignment_Data:
     type : String
         The type of alignment to extract from the file (e.g. 'words', 'phones')
         default: 'words'
+    
+    Attributes
+    ----------
+    text : list (String)
+        The text of the alignment
+    start : list (int)
+        The start frame of the alignment
+    end : list (int)
+        The end frame of the alignment
     """
     def __init__(
         self, dir, alignment_format, type='words'
@@ -40,7 +50,7 @@ class Alignment_Data:
         self.start = []
         self.end = []
 
-    def set_attributes(self):
+    def set_attributes(self, features):
         """
         Sets the text, start and end attributes of the object from the alignment file
 
@@ -53,15 +63,18 @@ class Alignment_Data:
         if self.alignment_format == '.TextGrid':
             for word in textgrids.TextGrid(self.dir)[self.type]:
                 self.text.append(word.text)
-                self.start.append(word.xmin)
-                self.end.append(word.xmax)
+                self.start.append(float(word.xmin))
+                self.end.append(float(word.xmax))
         elif self.alignment_format == '.txt':
             with open(self.dir, 'r') as f:
                 for line in f:
                     line = line.split()
-                    self.start.append(float(line[0])*0.01)
-                    self.end.append(float(line[1])*0.01)
+                    self.start.append(float(line[0]))
+                    self.end.append(float(line[1]))
                     self.text.append(line[2])
+        
+        self.start = features.get_frame_num(np.array(self.start))
+        self.end = features.get_frame_num(np.array(self.end))
     
     def __str__(self):
         return f"Alignment_Data({self.dir}, {self.text}, {self.start}, {self.end})"
@@ -251,10 +264,10 @@ class Features:
         self.alignment_data = []
         for file in files:
             alignment = Alignment_Data(file, self.alignment_format, type='words')
-            alignment.set_attributes()
+            alignment.set_attributes(self)
             self.alignment_data.append(alignment)
 
-    def get_speakers(self): # Works
+    def get_speakers(self, speaker_file): # Works
         """
         Get a list of speakers based on the dataset split.
 
@@ -269,13 +282,19 @@ class Features:
             A list of speakers in the dataset
         """
 
-        sub_dir = os.path.split(self.wav_dir)
-        speaker_dir = os.path.join(sub_dir[0], f'buckeye_{sub_dir[1]}_speakers.list')
-
-        speakers = []
-        with open(speaker_dir) as f:
-            for line in f:
-                speakers.append(line.strip())
+        if os.path.splitext(speaker_file)[1] == ".json":
+            language = os.path.split(self.wav_dir)[1]
+            with open(speaker_file) as f:
+                metadata = json.load(f)
+                speaker_list = metadata['subsets'][f'{language}']['items']['wav_list']['files_list']
+            speakers = []
+            for speaker_file in speaker_list:
+                speakers.append(os.path.splitext(os.path.split(speaker_file)[1])[0])
+        else:
+            speakers = []
+            with open(speaker_file) as f:
+                for line in f:
+                    speakers.append(line.strip())
         
         return sorted(speakers)
 
@@ -287,7 +306,7 @@ class Features:
         ----------
         self : Class
             The object containing all information to find alignments for the selected embeddings
-        seconds : float
+        seconds : float or ndarray (float)
             The number of seconds (of audio) to convert to frames
 
         Return
@@ -296,7 +315,7 @@ class Features:
             The feature embedding frame number corresponding to the given number of seconds 
         """
 
-        return round(seconds / self.frames_per_ms * 1000) # seconds (= samples / sample_rate) / 20ms per frame * 1000ms per second
+        return np.round(seconds / self.frames_per_ms * 1000) # seconds (= samples / sample_rate) / x ms per frame * 1000ms per second
 
     def get_sample_second(self, frame_num): # Works
         """
@@ -315,4 +334,4 @@ class Features:
             The number of seconds corresponding to the given feature embedding frame number
         """
 
-        return frame_num * self.frames_per_ms / 1000 # frame_num * 20ms per frame / 1000ms per second
+        return frame_num * self.frames_per_ms / 1000 # frame_num * x ms per frame / 1000ms per second

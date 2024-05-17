@@ -8,7 +8,6 @@ Date: April 2024
 
 import numpy as np
 import random
-import timeit
 import sys
 from numba import njit
 from pathlib import Path
@@ -17,10 +16,8 @@ from tqdm import tqdm
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 sys.path.append(str(Path(__file__).resolve().parents[0]))
 from cluster import KMeans_Herman
-from utils import data_process
-import landmark_seg, downsample
 
-class ESKmeans_Herman():
+class ESKmeans_CSC():
     """
     Embedded segmental K-means.
 
@@ -212,7 +209,7 @@ class ESKmeans_Herman():
         """
         return list(self.acoustic_model.get_assignments(self.get_segmented_embeds_i(i)))
     
-    def segment_utt_i(self, i, old_k):
+    def segment_utt_i(self, i):
         """
         Segment new boundaries and cluster new segments for utterance `i`.
 
@@ -237,22 +234,14 @@ class ESKmeans_Herman():
         vec_embed_neg_len_sqrd_norms, N, self.n_slices_min, self.n_slices_max)
         # print('new boundaries after viterbi', self.boundaries[i])
 
+        return sum_neg_len_sqrd_norm, old_embeds
+    
+    def cluster_utt_i(self, i, old_k, old_embeds):
         # Remove old embeddings and add new ones; this is equivalent to
         # assigning the new embeddings and updating the means.
         new_embeds = self.get_segmented_embeds_i(i)
         new_k = self.get_max_unsup_transcript_i(i)
-        # print('new', new_embeds, new_k)
-
-        # for i_embed in old_embeds:
-        #     if i_embed == -1:
-        #         continue  # don't remove a non-embedding (would accidently remove the last embedding)
-        #     # print('del', i_embed, self.acoustic_model.assignments[i_embed])
-        #     self.acoustic_model.del_item(i_embed) # TODO below comments only delete if not in new_embeds
-        # for i_embed, k in zip(new_embeds, new_k):
-        #     # print('new assigment', i_embed, k)
-        #     self.acoustic_model.add_item(i_embed, k)
-        # self.acoustic_model.clean_components()
-
+  
         # only update if changes were made
         del_embeds = []
         add_embeds = []
@@ -277,7 +266,7 @@ class ESKmeans_Herman():
             self.acoustic_model.add_item(i_embed, k)
         self.acoustic_model.clean_components()
 
-        return sum_neg_len_sqrd_norm, new_k
+        return new_k
 
     def segment(self, n_iterations):
         """
@@ -301,21 +290,21 @@ class ESKmeans_Herman():
         """
 
         old_k = [None]*self.D
+        old_embeds = [None]*self.D
         # print(old_k)
-        for iteration in tqdm(range(n_iterations), desc="Iteration"):
+        for _ in tqdm(range(n_iterations), desc="Iteration"):
             # print(f'\t~~~~~~~~~~~~~~~ Iteration {iteration+1} ~~~~~~~~~~~~~~~')
 
             sum_neg_len_sqrd_norm = 0
             utt_order = list(range(self.D))
-            for i_utt in utt_order:
+            for i_utt in utt_order: # get new segments:
                 if old_k[i_utt] is None:
                     old_k[i_utt] = list(self.acoustic_model.assignments[self.get_segmented_embeds_i(i_utt)])
-                    # print('old_k', old_k[i_utt])
-
-                # print(f'----- Utterance {i_utt+1} -----')
-                sum_neg_len_sqrd_norm_utt, old_k[i_utt] = self.segment_utt_i(i_utt, old_k[i_utt])
+                sum_neg_len_sqrd_norm_utt, old_embeds[i_utt] = self.segment_utt_i(i_utt)
                 sum_neg_len_sqrd_norm += sum_neg_len_sqrd_norm_utt
-
+            for i_utt in utt_order:
+                    # print('old_k', old_k[i_utt])
+                old_k[i_utt] = self.cluster_utt_i(i_utt, old_k[i_utt], old_embeds[i_utt])
             # print('Sum of negative squared norm:', sum_neg_len_sqrd_norm)
 
         return sum_neg_len_sqrd_norm
@@ -463,88 +452,3 @@ def forward_backward_kmeans_viterbi(vec_embed_neg_len_sqrd_norms, N,
         t = t - k
 
     return sum_neg_len_sqrd_norm, boundaries
-
-def main():
-    data = data_process.Features(wav_dir='/media/hdd/data/luna', root_dir='/media/hdd/embeddings/luna', model_name='mfcc', layer=-1, data_dir='/media/hdd/data/librispeech_alignments/', wav_format='.wav', alignment_format='.TextGrid', num_files=-1)
-
-    sample, wavs = data.sample_embeddings() # sample from the feature embeddings
-    embeddings = data.load_embeddings(sample) # load the sampled embeddings
-
-    index_del = []
-    for i, embedding in enumerate(embeddings): # delete embeddings with only one frame
-        if embedding.shape[0] == 1:
-            index_del.append(i)
-
-    for i in sorted(index_del, reverse=True):
-        del sample[i]
-        del embeddings[i]
-    
-    n_slices_max = 6 # max number of landmarks a segment can span, n_landmarks_max in notebook
-    landmarks = []
-    segments = []
-    lengths = []
-    for wav in wavs: # for each utterance
-        landmarks.append(np.ceil(landmark_seg.get_boundaries(wav, fs=16000)*100).astype(np.int32).tolist()[1:]) # get the boundaries
-        segments.append(landmark_seg.get_segments(landmarks[-1], max_span = n_slices_max))
-        lengths.append(len(landmarks[-1]))
-    
-    downsampled_utterances = downsample.downsample(embeddings, segments, n=10)
-
-    vec_ids = []
-    for i_utt in range(len(downsampled_utterances)):
-        # Vector IDs: `vec_ids[i:i+ t]` contains the IDs of embedding[0:t] up to embedding[t - 1:t], with i = t(t - 1)/2
-        n_slices = lengths[i_utt] # number of landmarks in the utterance
-        vec_id = -1*np.ones(int((n_slices**2 + n_slices)/2), dtype=int)
-        i_embed = 0
-        for cur_start in range(n_slices):
-            for cur_end in range(cur_start, min(n_slices, cur_start + n_slices_max)):
-                cur_end += 1
-                t = cur_end
-                i = t*(t - 1)/2
-                vec_id[int(i + cur_start)] = i_embed
-                i_embed += 1
-        vec_ids.append(vec_id.tolist())
-    
-    for i_utt in range(len(downsampled_utterances)):
-        print(len(vec_ids[i_utt]), len(segments[i_utt]), lengths[i_utt])
-        print((vec_ids[i_utt]), (segments[i_utt]), lengths[i_utt])
-
-    durations = [] # !! duration of each segment IN FRAMES (10ms units)
-    for i_utt in range(len(downsampled_utterances)):
-        landmarks_ = [0] + landmarks[i_utt]
-        N = len(landmarks_)
-        duration = -1*np.ones(int(((N - 1)**2 + (N - 1))/2), dtype=int)
-        j = 0
-        for t in range(1, N):
-            for i in range(t):
-                if t - i > N - 1:
-                    j += 1
-                    continue
-                duration[j] = landmarks_[t] - landmarks_[i]
-                j += 1
-        durations.append(duration.tolist())
-    
-    random.seed(2)
-    np.random.seed(2)
-
-    K_max = 5 # max number of clusters
-    segmenter = ESKmeans_Herman(
-        K_max, downsampled_utterances, vec_ids, durations, landmarks, lengths,
-        p_boundary_init=0.5, n_slices_max=n_slices_max, min_duration=20
-        )
-
-    # Perform inference
-    def runit():
-        segmenter.segment(n_iterations=5)
-
-    print('MY TIME:', timeit.timeit(runit, number=1))
-
-    ground_truth_boundaries = [[10, 33, 62, 96, 139, 167],[52, 70, 120, 180],[23, 44, 77, 95, 109, 164, 191]] # based on landmarks
-    # [10, 33, 62, 96, 139, 167] is [33, 62, 96, 139, 167] AND [52, 70, 120, 180] is [52, 70, 180] AND [23, 44, 77, 95, 109, 164, 191] is [23, 44, 95, 109, 191] if we do not consider silences
-    # obtain clusters and landmarks
-    for i in range(segmenter.D): # for each utterance
-        print(segmenter.get_unsup_transcript_i(i), segmenter.get_segmented_embeds_i(i), segmenter.boundaries[i], landmarks[i], ground_truth_boundaries[i])
-        print(landmarks[i]*segmenter.boundaries[i][0:len(landmarks[i])])
-
-if __name__ == "__main__":
-    main()
