@@ -34,6 +34,16 @@ def downsample_utterance(features, segment, n):
     embeddings = []
     for i, j in segment:
         y = features[i:j+1, :].T
+        if j > features.shape[0]: # if the segment is longer than the utterance, stop at last frame
+            if i < features.shape[0]:
+                y = features[i:, :].T
+            elif i == features.shape[0]:
+                y = features[i-1:, :].T
+        elif i == j: # if the segment is empty, add one frame
+            y = features[i-1:j+1, :].T
+        else:
+            y = features[i:j+1, :].T
+        
         y_new = signal.resample(y, n, axis=1).flatten("C")
         embeddings.append(y_new)
     return np.asarray(embeddings)
@@ -62,4 +72,6 @@ def downsample(utterances, segments, n=10):
     for utterance, segment in zip(utterances, segments):
         downsampled_utterances.append(downsample_utterance(utterance, segment, n))
     
+    if len (downsampled_utterances) == 1:
+        return downsampled_utterances[0]
     return downsampled_utterances

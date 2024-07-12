@@ -120,11 +120,11 @@ class ESKmeans_FAISS():
                 self.boundaries[i, N_i - 1] = True
 
                 # Don't allow all disregarded embeddings for initialization
-                if np.all(np.asarray(self.get_segmented_embeds_i(i)) == -1):
+                if np.all(np.asarray(self.get_segmented_embeds_i(i)) == -1): # returns all active segments in vec_ids
                     continue
 
                 # Test that `n_slices_max` is not exceeded
-                indices = self.get_segmented_landmark_indices(i)
+                indices = self.get_segmented_landmark_indices(i) # get indeces in self.boundaries that are active (start, end)
                 if ((np.max([j[1] - j[0] for j in indices]) <= n_slices_max and
                         np.min([j[1] - j[0] for j in indices]) >= n_slices_min) or
                         (N_i <= n_slices_min)):

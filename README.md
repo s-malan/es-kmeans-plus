@@ -15,6 +15,11 @@ A: YES!
 Q: what change?
 A: other input features instead of MFCCs, use better k-means algo, make more efficient
 
+Q: GradSeg paper gives a bit better results than TTI, should I look into using them as landmarks?
+A: run experiment on librispeech, but also they probably evaluate differently so maybe its not actually better…
+
+for initial portential boundaries also look to use vg-HuBERT
+
 get code from:
 - Herman repo
   - [Main](https://github.com/kamperh/eskmeans/tree/master)
@@ -23,9 +28,11 @@ get code from:
 - Benji DP code
 - Hao DP code
 
-for initial portential boundaries also look to use vg-HuBERT
-
 if write a paper look at the history of es-kmeans (goes back to 2009 or something, ask Benji)
+what we want to talk about: can ESKMeans in the 21st century compete with all these other fancy ASR models or are they all like ESKMeans at the core? can we update ESKMeans to show this (that this idea is the backbone of all ASR models)?
+REMEMBER: if you change the number of clusters the model fundamentally changes, so you cannot actually compare across methods with a different number of clusters.
+knn_wordseg paper: Aggregation makes a good point saying concatenation preserves the order of features while averaging does not
+writing: say eskmeans does best when the landmarks give it a good starting point therefore any landmark algorithm that gives high quality landmarks allows eskmeans to subsample them leading to well defined boundaries
 
 ## Facebook k-means
 

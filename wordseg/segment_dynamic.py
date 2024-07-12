@@ -7,17 +7,14 @@ Date: April 2024
 """
 
 import numpy as np
-import random
-import sys
 from numba import njit
-from pathlib import Path
 from tqdm import tqdm
+from wordseg import downsample
+from sklearn.decomposition import PCA
 
-sys.path.append(str(Path(__file__).resolve().parents[1]))
-sys.path.append(str(Path(__file__).resolve().parents[0]))
-from cluster import KMeans_Herman
+import faiss # https://github.com/facebookresearch/faiss/wiki/Faiss-building-blocks:-clustering,-PCA,-quantization
 
-class ESKmeans_CSC():
+class ESKmeans_Dynamic():
     """
     Embedded segmental K-means.
 
@@ -75,80 +72,43 @@ class ESKmeans_CSC():
         Keeps track of utterance labels for a specific utterance ID.
     """
 
-    def __init__(self, K_max, embeddings, vec_ids, durations,
-            landmarks, lengths, n_slices_min=0, n_slices_max=20, min_duration=0,
-            p_boundary_init=0.5, wip=0):
+    def __init__(self, n_slices_min=0, n_slices_max=20, min_duration=0, p_boundary_init=1.0):
 
         # Attributes from parameters
-        self.durations = durations
-        self.landmarks = landmarks
-        self.lengths = lengths
         self.n_slices_min = n_slices_min # !! Benji does not use this
         self.n_slices_max = n_slices_max
-        self.wip = wip
-
-        # Process embeddings into a single matrix, and vec_ids into a list (entry for each utterance)
-        self.embeddings, vec_ids, _ = process_embeddings(embeddings, vec_ids) # !! only do if more than one utterance at a time
-
-        # Set up utterance information
-        self.N = self.embeddings.shape[0]
-        self.D = len(self.lengths) # number of utterances
-        self.max_num_landmarks = max(self.lengths)
-
-        # Vec IDs
-        self.vec_ids = -1*np.ones(
-            (self.D, int(self.max_num_landmarks*(self.max_num_landmarks + 1)/2)), dtype=np.int32)
-        for i_vec_id, vec_id in enumerate(vec_ids):
-            self.vec_ids[i_vec_id, :len(vec_id)] = vec_id
-
-        # Durations
-        self.durations = -1*np.ones((self.D, int(self.max_num_landmarks*(self.max_num_landmarks + 1)/2)), dtype=np.int32)
-        for i_duration_vec, duration_vec in enumerate(durations):
-            if not (min_duration == 0 or len(duration_vec) == 1):
-                cur_duration_vec = np.array(duration_vec, dtype=np.float64)
-                # cur_duration_vec[cur_duration_vec < min_duration] = -np.nan
-                cur_duration_vec[cur_duration_vec < min_duration] = -1
-                # if np.all(np.isnan(cur_duration_vec)):
-                if np.all(cur_duration_vec == -1):
-                    cur_duration_vec[np.argmax(duration_vec)] = np.max(duration_vec)
-                duration_vec = cur_duration_vec
-            self.durations[i_duration_vec, :len(duration_vec)] = duration_vec
-        
-        # Boundaries
-        self.boundaries = np.zeros((self.D, self.max_num_landmarks), dtype=bool)
-        for i in range(self.D):
-            N_i = self.lengths[i]
-            while True: # initializing boundaries randomly with probability
-                self.boundaries[i, 0:N_i] = (np.random.rand(N_i) < p_boundary_init)
-                self.boundaries[i, N_i - 1] = True
-
-                # Don't allow all disregarded embeddings for initialization
-                if np.all(np.asarray(self.get_segmented_embeds_i(i)) == -1):
-                    continue
-
-                # Test that `n_slices_max` is not exceeded
-                indices = self.get_segmented_landmark_indices(i)
-                if ((np.max([j[1] - j[0] for j in indices]) <= n_slices_max and
-                        np.min([j[1] - j[0] for j in indices]) >= n_slices_min) or
-                        (N_i <= n_slices_min)):
-                    break
-
-        # Initialize the K-means components !! hardcoded to be spread
-        init_embeds = []
-        for i in range(self.D):
-            init_embeds.extend(self.get_segmented_embeds_i(i))
-        init_embeds = np.array(init_embeds, dtype=int)
-        init_embeds = init_embeds[np.where(init_embeds != -1)]
-
-        assignments = -1*np.ones(self.N, dtype=int) # TODO make one-hot
-        n_init_embeds = len(init_embeds)
-        assignment_list = (list(range(K_max))*int(np.ceil(float(n_init_embeds)/K_max)))[:n_init_embeds]
-        random.shuffle(assignment_list)
-        assignments[init_embeds] = np.array(assignment_list)
-
-        self.acoustic_model = KMeans_Herman(self.embeddings, K_max, assignments) # TODO make sure embeddings are in correct format (N utterance segments, D features after downsampled)
-        # print('ESKMEANS initial assignments:', self.acoustic_model.assignments, self.boundaries)
+        self.min_duration = min_duration
+        self.p_boundary_init = p_boundary_init
     
+    def get_boundaries(self, length):
+        while True: # initializing boundaries randomly with probability
+            boundaries = (np.random.rand(length) < self.p_boundary_init)
+            boundaries[length - 1] = True
+
+            # Test that `n_slices_max` is not exceeded
+            indices = self.get_segmented_landmark_indices(boundaries=boundaries, lengths=length)
+            if ((np.max([j[1] - j[0] for j in indices]) <= self.n_slices_max and
+                    np.min([j[1] - j[0] for j in indices]) >= self.n_slices_min) or
+                    (length <= self.n_slices_min)):
+                break
+
+        return boundaries
+    
+    def set_data(self, data, samples, landmarks, segments, lengths, durations, vec_ids, boundaries, K_max, pca=None):
+        # Attributes from parameters
+        self.data = data
+        self.pca = pca
+        self.samples = samples
+        self.landmarks = landmarks
+        self.segments = segments
+        self.lengths = lengths
+        self.durations = durations
+        self.vec_ids = vec_ids
+        self.boundaries = boundaries
+        self.K_max = K_max
+
+        self.D = len(self.lengths) # number of utterances
+
     def get_segmented_embeds_i(self, i):
         """
         Return a list of embedding IDs according to the current segmentation
@@ -157,44 +117,56 @@ class ESKmeans_CSC():
         embed_ids = []
         j_prev = 0
         for j in range(self.lengths[i]):
-            if self.boundaries[i, j]:
+            if self.boundaries[i][j]:
                 # We aim to extract seq[j_prev:j+1]. Let the location of this
                 # ID be `vec_ids[i, k]`, and we need to find k.
                 k = int(0.5*(j + 1)*j)  # this is the index of the seq[0:j] in `vec_ids[i]`
                 k += j_prev  # this is the index of the seq[j_prev:j] in `vec_ids[i]`
-                embed_ids.append(self.vec_ids[i, k])
+                embed_ids.append(self.vec_ids[i][k])
                 j_prev = j + 1
         return embed_ids
     
-    def get_segmented_landmark_indices(self, i):
+    def get_segmented_landmark_indices(self, i=None, boundaries=None, lengths=None):
         """
         Return a list of tuple, where every tuple is the start (inclusive) and
         end (exclusive) landmark index for the segmented embeddings.
         """
+
         indices = []
         j_prev = 0
-        for j in np.where(self.boundaries[i][:self.lengths[i]])[0]:
-            indices.append((j_prev, j + 1))
-            j_prev = j + 1
+        if boundaries is not None and lengths is not None:
+            for j in np.where(boundaries[:lengths])[0]:
+                indices.append((j_prev, j + 1))
+                j_prev = j + 1
+        else:
+            for j in np.where(self.boundaries[i][:self.lengths[i]])[0]:
+                indices.append((j_prev, j + 1))
+                j_prev = j + 1
         return indices
     
-    def get_vec_embed_neg_len_sqrd_norms(self, vec_ids, durations):
+    def get_vec_embed_neg_len_sqrd_norms(self, embeddings, vec_ids, durations):
 
         # Get scores
         vec_embed_neg_len_sqrd_norms = -np.inf*np.ones(len(vec_ids))
+        indices = -np.inf*np.ones(len(vec_ids))
         for i, embed_id in enumerate(vec_ids):
             if embed_id == -1:
                 continue
-            vec_embed_neg_len_sqrd_norms[i] = self.acoustic_model.max_neg_sqrd_norm_i(embed_id)
+            
+            # find negative L2 distance to closest centroid
+            dist, index = self.acoustic_model.index.search(embeddings[embed_id].reshape(1, embeddings.shape[-1]), 1)
+            indices[i] = index
+            vec_embed_neg_len_sqrd_norms[i] = -1*dist # negative squared L2 distance
 
             # Scale log marginals by number of frames
             # if np.isnan(durations[i]):
             if durations[i] == -1:
                 vec_embed_neg_len_sqrd_norms[i] = -np.inf
+                indices[i] = -1
             else:
                 vec_embed_neg_len_sqrd_norms[i] *= durations[i]#**self.time_power_term
 
-        return vec_embed_neg_len_sqrd_norms + self.wip
+        return vec_embed_neg_len_sqrd_norms, indices
     
     def get_max_unsup_transcript_i(self, i):
         """
@@ -219,54 +191,34 @@ class ESKmeans_CSC():
             The length-weighted K-means objective for this utterance.
         """
 
-        old_embeds = self.get_segmented_embeds_i(i)
-        # print('old', old_embeds, old_k, self.boundaries[i])
-        # print(self.acoustic_model.assignments)
+        # sample the current utterance and downsample all possible segmentations
+        embeddings = self.data.load_embeddings([self.samples[i]])[0]
+
+        if self.pca is not None:
+            embeddings = self.pca.transform(embeddings)
+            embeddings = embeddings[:, [3,4,5,6,7,8,9,10,12,13,14]]
+            
+            # Use dense downsample method:
+            embeddings = downsample.downsample([embeddings], [self.segments[i]], n=10)
+
+            # Use average as downsampling method:
+            # embeddings = np.stack([embeddings[a:b, :].mean(0) for a, b in self.segments[i]])
+        else:
+            embeddings = downsample.downsample([embeddings], [self.segments[i]], n=10)
+
 
         N = self.lengths[i]
-        vec_embed_neg_len_sqrd_norms = self.get_vec_embed_neg_len_sqrd_norms( # get the score of each segment of the utterance
-            self.vec_ids[i, :int((N**2 + N)/2)],
-            self.durations[i, :int((N**2 + N)/2)]
+        vec_embed_neg_len_sqrd_norms, classes = self.get_vec_embed_neg_len_sqrd_norms(embeddings,
+            self.vec_ids[i][:int((N**2 + N)/2)],
+            self.durations[i][:int((N**2 + N)/2)]
             )
 
         # Get new boundaries
-        sum_neg_len_sqrd_norm, self.boundaries[i, :N] = forward_backward_kmeans_viterbi(
-        vec_embed_neg_len_sqrd_norms, N, self.n_slices_min, self.n_slices_max)
+        sum_neg_len_sqrd_norm, self.boundaries[i], classes = forward_backward_kmeans_viterbi(
+        vec_embed_neg_len_sqrd_norms, classes, N, self.n_slices_min, self.n_slices_max)
         # print('new boundaries after viterbi', self.boundaries[i])
 
-        return sum_neg_len_sqrd_norm, old_embeds
-    
-    def cluster_utt_i(self, i, old_k, old_embeds):
-        # Remove old embeddings and add new ones; this is equivalent to
-        # assigning the new embeddings and updating the means.
-        new_embeds = self.get_segmented_embeds_i(i)
-        new_k = self.get_max_unsup_transcript_i(i)
-  
-        # only update if changes were made
-        del_embeds = []
-        add_embeds = []
-        add_k = []
-        for embed, k in zip(old_embeds, old_k):
-            if not (embed in new_embeds and k == new_k[new_embeds.index(embed)]):
-                del_embeds.append(embed)
-        
-        if len(del_embeds) > 0:
-            for embed, k in zip(new_embeds, new_k):
-                if not (embed in old_embeds and k == old_k[old_embeds.index(embed)]):
-                    add_embeds.append(embed)
-                    add_k.append(k)
-        
-        for i_embed in del_embeds:
-            if i_embed == -1:
-                continue  # don't remove a non-embedding (would accidently remove the last embedding)
-            self.acoustic_model.del_item(i_embed)
-            # print('del', i_embed)
-        for i_embed, k in zip(add_embeds, add_k):
-            # print('new assigment', i_embed, k)
-            self.acoustic_model.add_item(i_embed, k)
-        self.acoustic_model.clean_components()
-
-        return new_k
+        return sum_neg_len_sqrd_norm, classes
 
     def segment(self, n_iterations):
         """
@@ -289,25 +241,40 @@ class ESKmeans_CSC():
             The segmentations of the downsampled utterances
         """
 
-        old_k = [None]*self.D
-        old_embeds = [None]*self.D
-        # print(old_k)
         for _ in tqdm(range(n_iterations), desc="Iteration"):
-            # print(f'\t~~~~~~~~~~~~~~~ Iteration {iteration+1} ~~~~~~~~~~~~~~~')
 
+            # Cluster:
+            embeddings = []
+            # embedding_shapes = []
+            for i_utt, (sample, segment) in enumerate(zip(self.samples, self.segments)): # for each utterance sample file path
+                if self.pca is not None:
+                    embedding = self.pca.transform(self.data.load_embeddings([sample])[0])
+                    embedding = embedding[:, [3,4,5,6,7,8,9,10,12,13,14]]
+                else:
+                    embedding = self.data.load_embeddings([sample])[0]
+                segment = list(np.array(segment)[self.get_segmented_embeds_i(i_utt)]) # get only active segments
+                
+                # Use dense downsample method:
+                embeddings.append(downsample.downsample([embedding], [segment], n=10)) # TODO use downsample_utterance if only downsample one utterance
+                
+                # Use average as downsampling method:
+                # embeddings.append(np.stack([embedding[a:b, :].mean(0) for a, b in segment]))
+            
+            embeddings = np.concatenate(embeddings, axis=0)
+            print('Clustering sizes', self.K_max, embeddings.shape)
+            self.acoustic_model = faiss.Kmeans(embeddings.shape[1], self.K_max, niter=20, nredo=3, verbose=True)
+            self.acoustic_model.train(embeddings)
+
+            # Segment:
+            print("Segmenting...")
+            classes = []
             sum_neg_len_sqrd_norm = 0
-            utt_order = list(range(self.D))
-            for i_utt in tqdm(utt_order, desc="Utterance"): # get new segments:
-                if old_k[i_utt] is None:
-                    old_k[i_utt] = list(self.acoustic_model.assignments[self.get_segmented_embeds_i(i_utt)])
-                sum_neg_len_sqrd_norm_utt, old_embeds[i_utt] = self.segment_utt_i(i_utt)
+            for i_utt in range(self.D): # get new segments: # TODO do in parallel
+                sum_neg_len_sqrd_norm_utt, i_classes = self.segment_utt_i(i_utt)
                 sum_neg_len_sqrd_norm += sum_neg_len_sqrd_norm_utt
-            for i_utt in utt_order:
-                    # print('old_k', old_k[i_utt])
-                old_k[i_utt] = self.cluster_utt_i(i_utt, old_k[i_utt], old_embeds[i_utt])
-            # print('Sum of negative squared norm:', sum_neg_len_sqrd_norm)
-
-        return sum_neg_len_sqrd_norm
+                classes.append(i_classes)
+                
+        return sum_neg_len_sqrd_norm, classes
 
 def process_embeddings(embedding_mats, vec_ids_dict):
     """
@@ -351,7 +318,7 @@ def process_embeddings(embedding_mats, vec_ids_dict):
     return (np.asarray(embeddings), vec_ids, ids_to_utterance_labels)
 
 @njit
-def forward_backward_kmeans_viterbi(vec_embed_neg_len_sqrd_norms, N,
+def forward_backward_kmeans_viterbi(vec_embed_neg_len_sqrd_norms, all_classes, N,
         n_slices_min=0, n_slices_max=0):
     """
     Segmental K-means viterbi segmentation of an utterance of length `N` based
@@ -389,6 +356,7 @@ def forward_backward_kmeans_viterbi(vec_embed_neg_len_sqrd_norms, N,
     n_slices_min_cut = -(n_slices_min - 1) if n_slices_min > 1 else None
 
     boundaries = np.zeros(N, dtype=np.bool_)
+    classes = -1*np.ones(N, dtype=np.int_)
     boundaries[-1] = True
     gammas = np.ones(N)
     gammas[0] = 0.0
@@ -410,7 +378,7 @@ def forward_backward_kmeans_viterbi(vec_embed_neg_len_sqrd_norms, N,
                 gammas[:t][-n_slices_max:]
                 )
         i += t
-
+    
     # Backward segmentation
     t = N
     sum_neg_len_sqrd_norm = 0.
@@ -426,7 +394,7 @@ def forward_backward_kmeans_viterbi(vec_embed_neg_len_sqrd_norms, N,
                 vec_embed_neg_len_sqrd_norms[i:i + t][-n_slices_max:] +
                 gammas[:t][-n_slices_max:]
                 )
-        
+
         # assert not np.isnan(np.sum(q_t))
         if np.all(q_t == -np.inf):
 
@@ -439,16 +407,20 @@ def forward_backward_kmeans_viterbi(vec_embed_neg_len_sqrd_norms, N,
                 q_t = (vec_embed_neg_len_sqrd_norms[i:i + t][-n_slices_max:] + gammas[:t][-n_slices_max:])
 
             boundaries[t - 1] = True  # insert the boundary
+            print('SHOULD NOT HAPPEN??? WHAT TO DO WITH CLASSES', boundaries)
 
         q_t = q_t[::-1]
         k = np.argmax(q_t) + 1
         if n_slices_min_cut is not None:
             k += n_slices_min - 1
-
+        
         sum_neg_len_sqrd_norm += vec_embed_neg_len_sqrd_norms[i + t - k]
+        # print('here:', i + t - k, vec_embed_neg_len_sqrd_norms[i + t - k])
+        classes[t - k] = all_classes[i + t - k] # class of the section starting at t and going back k boundaries
+        # print('boundary:', t-k-1, "has class", all_classes[i + t - k])
         if t - k - 1 < 0:
             break
         boundaries[t - k - 1] = True
         t = t - k
 
-    return sum_neg_len_sqrd_norm, boundaries
+    return sum_neg_len_sqrd_norm, boundaries, classes

@@ -307,7 +307,7 @@ class ESKmeans_Herman():
 
             sum_neg_len_sqrd_norm = 0
             utt_order = list(range(self.D))
-            for i_utt in utt_order:
+            for i_utt in tqdm(utt_order, desc="Utterance"):
                 if old_k[i_utt] is None:
                     old_k[i_utt] = list(self.acoustic_model.assignments[self.get_segmented_embeds_i(i_utt)])
                     # print('old_k', old_k[i_utt])

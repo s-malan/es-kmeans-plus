@@ -157,6 +157,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args() # python3 utils/encode.py mfcc /media/hdd/data/librispeech/dev-clean/ /media/hdd/embeddings/librispeech --extension=.flac
                                # python3 utils/encode.py mfcc /media/hdd/data/buckeye_segments/dev/ /media/hdd/embeddings/buckeye/dev --extension=.wav
+                               # python3 utils/encode.py mfcc /media/hdd/data/zrc/zrc2017_train_segments/english /media/hdd/embeddings/zrc/zrc2017_train_segments/english --extension=.wav
 
     encoder = EncodeAudio(args.model, args.in_dir, args.out_dir, args.extension)
     encoder.get_encodings()
