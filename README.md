@@ -56,3 +56,9 @@ The **speaker** argument let's you supply a .json file with speaker names wherea
 To evaluate the resultant hypothesized word boundaries and cluster assignments, clone and follow the recipe of the evaluation repository at [https://github.com/s-malan/evaluation](https://github.com/s-malan/evaluation).
 
 For the ZeroSpeech Challenge dataset, use the ZeroSpeech toolkit's built in evaluation script.
+
+## Contributors
+
+- Simon Malan
+- [Benjamin van Niekerk](https://scholar.google.com/citations?user=zCokvy8AAAAJ&hl=en&oi=ao)
+- [Herman Kamper](https://www.kamperh.com/)
