@@ -28,7 +28,7 @@ class Features:
         The name of the model to get the features from
     layer : int
         The number of the layer to get the features from
-    wav_format : String
+    extension : String
         The format of the audio files.
         default: '.flac'
     num_files : int
@@ -40,13 +40,13 @@ class Features:
     """
 
     def __init__(
-        self, wav_dir, root_dir, model_name, layer, wav_format='.flac', num_files=-1, frames_per_ms=20
+        self, wav_dir, root_dir, model_name, layer, extension='.flac', num_files=-1, frames_per_ms=20
     ):
         self.wav_dir = wav_dir
         self.root_dir = root_dir
         self.model_name = model_name
         self.layer = layer
-        self.wav_format = wav_format
+        self.extension = extension
         self.num_files = num_files
         self.frames_per_ms = frames_per_ms
 
@@ -80,9 +80,9 @@ class Features:
                 all_features = sorted(glob(os.path.join(self.root_dir, self.model_name, "**/*.npy"), recursive=True))
 
         if speaker is not None:
-            all_wavs = sorted(glob(os.path.join(self.wav_dir, f'**/{speaker}*' + self.wav_format), recursive=True))
+            all_wavs = sorted(glob(os.path.join(self.wav_dir, f'**/{speaker}*' + self.extension), recursive=True))
         else:
-            all_wavs = sorted(glob(os.path.join(self.wav_dir, "**/*" + self.wav_format), recursive=True))
+            all_wavs = sorted(glob(os.path.join(self.wav_dir, "**/*" + self.extension), recursive=True))
 
         if self.num_files == -1: # sample all the data
             return all_features, all_wavs
