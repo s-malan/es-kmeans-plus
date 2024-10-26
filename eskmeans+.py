@@ -13,7 +13,7 @@ from pathlib import Path
 import os
 from tqdm import tqdm
 from utils import data_process
-from wordseg import landmark_seg, segment_new
+from wordseg import landmark_seg, segment
 from sklearn.decomposition import PCA
 
 def get_data(data, args, speaker, segmenter):
@@ -287,7 +287,7 @@ if __name__ == "__main__":
     for speaker in tqdm(speakerlist, desc="Speaker"):
         
         # ~~~~~~~~~~ Sample data and get the landmarks for the sampled audio file ~~~~~~~~~~
-        segmenter = segment_new.ESKmeans( # setup base ESKmeans object
+        segmenter = segment.ESKmeans( # setup base ESKmeans object
             p_boundary_init=0.5, n_slices_max=n_slices_max, min_duration=min_duration)
         
         samples, wavs, landmarks = get_data(data, args, speaker, segmenter)
