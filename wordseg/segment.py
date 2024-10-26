@@ -13,10 +13,11 @@ from tqdm import tqdm
 from wordseg import subsample
 from sklearn.decomposition import PCA
 import faiss
+import itertools
 
 class ESKmeans():
     """
-    Embedded segmental K-means PLUS. TODO
+    Embedded segmental K-means PLUS.
 
     Segmentation and clustering are carried out using this class.
 
@@ -207,26 +208,23 @@ class ESKmeans():
 
         # Get scores
         vec_embed_neg_len_sqrd_norms = -np.inf*np.ones(len(vec_ids))
-        indices = -np.inf*np.ones(len(vec_ids))
         for i, embed_id in enumerate(vec_ids):
             if embed_id == -1:
                 continue
             
             # find negative L2 distance to closest centroid
-            dist, index = self.acoustic_model.index.search(embeddings[embed_id].reshape(1, embeddings.shape[-1]), 1)
-            indices[i] = index[0][0]
+            dist, _ = self.acoustic_model.index.search(embeddings[embed_id,:].reshape(1,embeddings.shape[-1]), 1)
             vec_embed_neg_len_sqrd_norms[i] = -1*dist # negative squared L2 distance
 
             # Scale log marginals by number of frames
             if durations[i] == -1:
                 vec_embed_neg_len_sqrd_norms[i] = -np.inf
-                indices[i] = -1
             else:
                 vec_embed_neg_len_sqrd_norms[i] *= durations[i]
 
-        return vec_embed_neg_len_sqrd_norms, indices
+        return vec_embed_neg_len_sqrd_norms
     
-    def segment_utt_i(self, i):
+    def segment_utt_i(self, i, extract=False):
         """
         Segment new boundaries and cluster new segments for utterance `i`.
 
@@ -234,6 +232,9 @@ class ESKmeans():
         ----------
         i : int
             The index of the utterance used in the cluster assignment.
+        extract : bool
+            If True, the classes are extracted and returned.
+            Else the new segmentation is found and set.
 
         Return
         ------
@@ -246,10 +247,18 @@ class ESKmeans():
         # sample the current utterance and downsample all possible segmentations
         embeddings = self.data.load_features([self.samples[i]])[0]
 
+        if extract: # active segments
+            active_landm = [self.landmarks[i][j] for j in range(len(self.landmarks[i])) if self.boundaries[i][j]]
+            active_landm.insert(0, 0)
+            all_segments = list(itertools.pairwise(active_landm))
+        else:
+            # get all possible segments:
+            all_segments = self.segments[i]
+
         if self.pca is not None:
             embeddings = self.pca.transform(embeddings)
             downsampled_embeddings = []
-            for a, b in self.segments[i]:
+            for a, b in all_segments:
                 if b > embeddings.shape[0]: # if the segment is longer than the utterance, stop at last frame
                     if a < embeddings.shape[0]:
                         downsampled_embeddings.append(embeddings[a:, :].mean(0))
@@ -263,7 +272,7 @@ class ESKmeans():
             embeddings = np.stack(downsampled_embeddings)
             del downsampled_embeddings
         else:
-            embeddings = subsample.downsample([embeddings], [self.segments[i]], n=10)
+            embeddings = subsample.downsample([embeddings], [all_segments], n=10)
 
         # normalize embedding
         downsampled_utterance = []
@@ -274,15 +283,20 @@ class ESKmeans():
             assert norm != 0.
         embeddings = np.stack(downsampled_utterance)
 
-        N = self.lengths[i]
-        vec_embed_neg_len_sqrd_norms, classes = self.get_vec_embed_neg_len_sqrd_norms(embeddings,
-            self.vec_ids[i][:int((N**2 + N)/2)],
-            self.durations[i][:int((N**2 + N)/2)]
-            )
+        if extract: # assign each segment to the closest cluster centroid
+            classes = [-1]*len(all_segments)
+            for i_index in range(len(classes)):
+                _, index = self.acoustic_model.index.search(embeddings[i_index].reshape(1, embeddings.shape[-1]), 1)
+                classes[i_index] = index[0][0]
+            return _, classes
 
-        sum_neg_len_sqrd_norm, self.boundaries[i], classes = forward_backward_kmeans_viterbi(
-        vec_embed_neg_len_sqrd_norms, classes, N, self.n_slices_min, self.n_slices_max)
-        return sum_neg_len_sqrd_norm, classes
+        vec_embed_neg_len_sqrd_norms = self.get_vec_embed_neg_len_sqrd_norms(embeddings, # all embeddings
+        self.vec_ids[i], self.durations[i])
+
+        sum_neg_len_sqrd_norm, self.boundaries[i] = forward_backward_kmeans_viterbi(
+        vec_embed_neg_len_sqrd_norms, self.lengths[i], self.n_slices_min, self.n_slices_max)
+
+        return sum_neg_len_sqrd_norm, None
 
     def segment(self, n_iterations):
         """
@@ -301,11 +315,14 @@ class ESKmeans():
             The classes assigned to each segment of all utterances.
         """
 
-        for _ in tqdm(range(n_iterations), desc="Iteration"):
-
+        for i_iter in tqdm(range(n_iterations+1), desc="Iteration"):
             # Cluster:
             embeddings = []
-            for i_utt, (sample, segment) in enumerate(zip(self.samples, self.segments)):
+            for i_utt, sample in enumerate(self.samples): # cluster active segments
+                active_landm = [self.landmarks[i_utt][j] for j in range(len(self.landmarks[i_utt])) if self.boundaries[i_utt][j]]
+                active_landm.insert(0, 0)
+                segment = list(itertools.pairwise(active_landm))
+
                 downsampled_embedding = []
                 if self.pca is not None:
                     embedding = self.pca.transform(self.data.load_features([sample])[0])
@@ -339,21 +356,24 @@ class ESKmeans():
             self.acoustic_model = faiss.Kmeans(embeddings.shape[1], self.K_max, niter=15, nredo=3, verbose=True)
             self.acoustic_model.train(embeddings)
 
-            # Segment:
+            # Segment or extract classes and return:
             classes = [None]*self.D
             sum_neg_len_sqrd_norm = 0
             utt_order = list(range(self.D))
             random.shuffle(utt_order)
 
             for i_utt in tqdm(utt_order, desc="Segmenting Utterances"):
-                sum_neg_len_sqrd_norm_utt, i_classes = self.segment_utt_i(i_utt)
-                sum_neg_len_sqrd_norm += sum_neg_len_sqrd_norm_utt
-                classes[i_utt] = i_classes
-                
+                if i_iter == n_iterations:
+                    _, i_classes = self.segment_utt_i(i_utt, extract=True)
+                    classes[i_utt] = i_classes
+                else:
+                    sum_neg_len_sqrd_norm_utt, _ = self.segment_utt_i(i_utt)
+                    sum_neg_len_sqrd_norm += sum_neg_len_sqrd_norm_utt
+        
         return sum_neg_len_sqrd_norm, classes
 
 @njit
-def forward_backward_kmeans_viterbi(vec_embed_neg_len_sqrd_norms, all_classes, N, n_slices_min, n_slices_max):
+def forward_backward_kmeans_viterbi(vec_embed_neg_len_sqrd_norms, N, n_slices_min, n_slices_max):
     """
     Segmental K-means viterbi segmentation of an utterance of length `N` based
     on its `vec_embed_neg_len_sqrd_norms` vector.
@@ -384,7 +404,6 @@ def forward_backward_kmeans_viterbi(vec_embed_neg_len_sqrd_norms, all_classes, N
     n_slices_min_cut = -(n_slices_min - 1) if n_slices_min > 1 else None
 
     boundaries = np.zeros(N, dtype=np.bool_)
-    classes = -1*np.ones(N, dtype=np.int_)
     boundaries[-1] = True
     gammas = np.ones(N)
     gammas[0] = 0.0
@@ -441,10 +460,9 @@ def forward_backward_kmeans_viterbi(vec_embed_neg_len_sqrd_norms, all_classes, N
             k += n_slices_min - 1
         
         sum_neg_len_sqrd_norm += vec_embed_neg_len_sqrd_norms[i + t - k]
-        classes[t - k] = all_classes[i + t - k] # class of the section starting at t and going back k boundaries
         if t - k - 1 < 0:
             break
         boundaries[t - k - 1] = True
         t = t - k
 
-    return sum_neg_len_sqrd_norm, boundaries, classes
+    return sum_neg_len_sqrd_norm, boundaries
