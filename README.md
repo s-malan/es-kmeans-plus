@@ -59,6 +59,6 @@ For the ZeroSpeech Challenge dataset, use the ZeroSpeech toolkit's built in eval
 
 ## Contributors
 
-- Simon Malan
+- [Simon Malan](https://scholar.google.com/citations?user=rxKKwFAAAAAJ&hl=en)
 - [Benjamin van Niekerk](https://scholar.google.com/citations?user=zCokvy8AAAAJ&hl=en&oi=ao)
 - [Herman Kamper](https://www.kamperh.com/)
