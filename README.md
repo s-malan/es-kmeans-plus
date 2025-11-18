@@ -14,7 +14,7 @@ This is the repository for the updated and improved embedded segmental K-means (
 
 **Pre-Process and Encode Speech Data**
 
-Use VAD to extract utterances from long speech files (specifically for ZeroSpeech and BuckEye) by cloning and following the recipes in the repository at [https://github.com/s-malan/data-process](https://github.com/s-malan/data-process).
+Use VAD to extract utterances from long speech files (specifically for [ZeroSpeech](https://zerospeech.com/challenge_archive/2017/data/) and BuckEye) by cloning and following the recipes in the repository at [https://github.com/s-malan/data-process](https://github.com/s-malan/data-process).
 
 **Encode Utterances**
 
